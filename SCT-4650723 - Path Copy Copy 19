@@ -839,7 +839,7 @@ HKLM64\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{3C01F274-867C-4D1D-B
 
 
 
-
+# FINAL | WORKING SCRIPT
 # =================================================================================================
 # Path Copy Copy 19 - Enterprise Targeted Uninstall / Remediation Script
 #
@@ -1731,6 +1731,11 @@ exit 0
 # RESULT
 # ================================================================================
 No confirmed in-scope Path Copy Copy 19 evidence remains.
+
+
+
+
+
 
 
 
