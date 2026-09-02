@@ -1725,8 +1725,6 @@ exit 0
 
 
 
-
-
 # ================================================================================
 # RESULT
 # ================================================================================
@@ -1735,11 +1733,38 @@ No confirmed in-scope Path Copy Copy 19 evidence remains.
 
 
 
+# ====================================================================================================================================
+# ARCHITECTURE
+
+<#
+1. Initial Detection
+   ↓
+2. Ownership Validation
+   ↓
+3. Capture Verified InstallLocation
+   ↓
+4. Select Registered Uninstall Command
+   ↓
+5. Resolve Command + Verify Uninstaller Exists
+   ↓
+6. Validate Safe Silent Execution
+   ↓
+7. Execute Verified Uninstaller
+   ↓
+8. Perform Repeated Fresh Validation Passes
+   ↓
+9. Final Validation
+   ├─ Findings remain → Exit 1 / NON-COMPLIANT
+   └─ No findings     → Exit 0 / COMPLIANT
+
+#>
+# ====================================================================================================================================
 
 
 
 
 
+# ------------------------------------------------------------------------------------------------------------------- END ---------------------------------------------------------------------------------------------------------------
 
 
 
