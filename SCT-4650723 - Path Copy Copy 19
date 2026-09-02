@@ -835,3 +835,1160 @@ No destructive action performed.
 
 REMAINING EVIDENCE:
 HKLM64\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1
+
+
+
+
+
+# =================================================================================================
+# Path Copy Copy 19 - Enterprise Targeted Uninstall / Remediation Script
+#
+# Version:
+#   Hardened / Corrected Architecture v2
+#
+# Target Component:
+#   Path Copy Copy 19
+#
+# Confirmed Windows Registry DisplayName from ControlUp testing:
+#   Path Copy Copy 19.0
+#
+# Defender Software Evidence:
+#   HKLM64\{3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1
+#
+# Exact Registry Path:
+#   HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\
+#   {3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1
+#
+# ControlUp Evidence:
+#   Application Name exists
+#   Confirmed registry DisplayName = Path Copy Copy 19.0
+#   No confirmed installation filesystem path supplied
+#
+# Deployment:
+#   Intune / ControlUp
+#   Run as SYSTEM
+#   Run using logged-on credentials: No
+#   64-bit registry view explicitly used
+#
+# Exit Code:
+#   0 = Target not detected OR successfully removed and fresh validation is clean
+#   1 = Confirmed target evidence/remnants remain OR safe remediation cannot proceed
+#
+#
+# =================================================================================================
+# CHANGES / IMPROVEMENTS IN VERSION 2
+# =================================================================================================
+#
+# 1. CORRECTED DISPLAYNAME OWNERSHIP VALIDATION
+#    - Previous version required exactly:
+#
+#         Path Copy Copy 19
+#
+#    - ControlUp testing confirmed the actual registered DisplayName is:
+#
+#         Path Copy Copy 19.0
+#
+#    - Version 2 therefore uses an explicit target-specific allow-list:
+#
+#         Path Copy Copy 19
+#         Path Copy Copy 19.0
+#
+#    - NO wildcard matching such as "*Path Copy Copy*" is used.
+#    - NO broad keyword matching is used.
+#    - Any other DisplayName causes Exit 1 and NO destructive action.
+#
+# 2. SEPARATES COMPONENT LABEL FROM REGISTERED DISPLAYNAME
+#    - $TargetComponent represents the remediation target:
+#
+#         Path Copy Copy 19
+#
+#    - $AllowedDisplayNames represents only confirmed acceptable registry identities.
+#    - This prevents the Defender component label from being incorrectly treated as the
+#      only possible Windows uninstall DisplayName.
+#
+# 3. EXPLICIT HKLM64 REGISTRY ACCESS
+#    - Uses Microsoft.Win32.RegistryKey with RegistryView.Registry64.
+#    - Does not depend on PowerShell process bitness for registry redirection.
+#
+# 4. FAIL-CLOSED OWNERSHIP VALIDATION
+#    - Exact registry key alone does not automatically authorize uninstall.
+#    - DisplayName must exist.
+#    - DisplayName must exactly match one of the approved target-specific values.
+#    - Missing or unexpected metadata causes Exit 1.
+#
+# 5. "_is1" IS NOT USED AS GENERIC EVIDENCE
+#    - No enumeration of arbitrary "_is1" keys.
+#    - Only the exact Defender-supplied target registry key is evaluated.
+#
+# 6. STRONG UNINSTALL COMMAND CORRELATION
+#    - QuietUninstallString / UninstallString must come from the already verified
+#      Path Copy Copy target registry entry.
+#    - Uninstall commands discovered elsewhere are never executed.
+#
+# 7. ROBUST REGISTERED COMMAND PARSING
+#    - Supports quoted executable paths.
+#    - Supports unquoted executable paths containing spaces by resolving an existing
+#      executable ending in .exe.
+#
+# 8. UNINSTALLER MUST EXIST BEFORE EXECUTION
+#    - Registered uninstaller executable is checked with Test-Path.
+#    - Missing uninstaller results in Exit 1.
+#    - Registry evidence is preserved.
+#
+# 9. NO BLIND REGISTRY DELETION
+#    - Registry key is never manually deleted merely to force compliance.
+#    - Broken/unavailable uninstaller does NOT result in registry-key cleanup.
+#
+# 10. DYNAMIC INSTALLLOCATION HANDLING
+#     - InstallLocation is used only when provided by the verified registry entry.
+#     - No Program Files, AppData, ProgramData, Temp, or other filesystem path is guessed.
+#
+# 11. SAFE SILENT UNINSTALL
+#     - QuietUninstallString is preferred.
+#     - If only UninstallString exists, Inno Setup switches are added only when the
+#       already verified target entry correlates to an unins*.exe executable.
+#
+# 12. UNINSTALL EXECUTION IS NOT SUCCESS
+#     - Process exit code is captured.
+#     - Compliance is determined by fresh final validation.
+#
+# 13. FRESH POST-UNINSTALL VALIDATION
+#     - Pre-remediation registry object is discarded.
+#     - Registry, verified uninstaller path, and verified InstallLocation are queried again.
+#
+# 14. MULTIPLE VALIDATION PASSES
+#     - Allows uninstall self-cleanup to complete before final decision.
+#
+# 15. NO SPECULATIVE CLEANUP
+#     - No guessed services.
+#     - No guessed scheduled tasks.
+#     - No guessed HKU entries.
+#     - No guessed folders.
+#     - No guessed files.
+#     - No unrelated cleanup.
+#
+# 16. NO FINAL ELSE BLOCK
+#     - Findings remain -> Exit 1
+#     - No findings     -> Exit 0
+#
+# =================================================================================================
+
+# =================================================================================================
+# TARGET CONFIGURATION
+# =================================================================================================
+$TargetComponent = "Path Copy Copy 19"
+$AllowedDisplayNames = @(
+    "Path Copy Copy 19",
+    "Path Copy Copy 19.0"
+)
+$TargetRegistryChildName =
+    "{3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1"
+$TargetRegistrySubKey =
+    "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$TargetRegistryChildName"
+$TargetRegistryDisplayPath =
+    "HKLM64\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$TargetRegistryChildName"
+# =================================================================================================
+# FUNCTION: GET EXACT TARGET REGISTRY ENTRY FROM HKLM64
+# =================================================================================================
+function Get-TargetRegistryEntry {
+    $BaseKey = $null
+    $TargetKey = $null
+
+    try {
+        $BaseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::LocalMachine,
+            [Microsoft.Win32.RegistryView]::Registry64
+        )
+        $TargetKey = $BaseKey.OpenSubKey(
+            $TargetRegistrySubKey,
+            $false
+        )
+        if (-not $TargetKey) {
+            return $null
+        }
+        return [PSCustomObject]@{
+            RegistryPath =
+                $TargetRegistryDisplayPath
+            PSChildName =
+                $TargetRegistryChildName
+            DisplayName =
+                $TargetKey.GetValue(
+                    "DisplayName",
+                    $null
+                )
+            DisplayVersion =
+                $TargetKey.GetValue(
+                    "DisplayVersion",
+                    $null
+                )
+            Publisher =
+                $TargetKey.GetValue(
+                    "Publisher",
+                    $null
+                )
+            InstallLocation =
+                $TargetKey.GetValue(
+                    "InstallLocation",
+                    $null
+                )
+            UninstallString =
+                $TargetKey.GetValue(
+                    "UninstallString",
+                    $null
+                )
+            QuietUninstallString =
+                $TargetKey.GetValue(
+                    "QuietUninstallString",
+                    $null
+                )
+            DisplayIcon =
+                $TargetKey.GetValue(
+                    "DisplayIcon",
+                    $null
+                )
+        }
+    }
+    catch {
+        Write-Output "ERROR - Unable to query exact HKLM64 target registry entry."
+        Write-Output "DETAIL: $($_.Exception.Message)"
+
+        return $null
+    }
+    finally {
+
+        if ($TargetKey) {
+            $TargetKey.Dispose()
+        }
+        if ($BaseKey) {
+            $BaseKey.Dispose()
+        }
+    }
+}
+# =================================================================================================
+# FUNCTION: RESOLVE REGISTERED UNINSTALL COMMAND
+# =================================================================================================
+function Resolve-RegisteredCommand {
+    param (
+
+        [Parameter(Mandatory = $true)]
+        [string]$CommandLine
+    )
+    $ExpandedCommand =
+        [Environment]::ExpandEnvironmentVariables(
+            $CommandLine.Trim()
+        )
+    if (
+        [string]::IsNullOrWhiteSpace(
+            $ExpandedCommand
+        )
+    ) {
+        return $null
+    }
+
+    # ---------------------------------------------------------------------------------------------
+    # CASE 1:
+    # Quoted executable
+    #
+    # Example:
+    #   "C:\Program Files\Product\unins000.exe" /VERYSILENT
+    # ---------------------------------------------------------------------------------------------
+    if (
+        $ExpandedCommand -match
+        '^\s*"([^"]+)"\s*(.*)$'
+    ) {
+        return [PSCustomObject]@{
+            Executable =
+                $Matches[1].Trim()
+            Arguments =
+                $Matches[2].Trim()
+        }
+    }
+    # ---------------------------------------------------------------------------------------------
+    # CASE 2:
+    # Unquoted executable.
+    #
+    # Do not split at first space because the path may contain spaces.
+    # Evaluate possible .exe boundaries from longest to shortest.
+    # ---------------------------------------------------------------------------------------------
+    $ExeMatches =
+        [regex]::Matches(
+            $ExpandedCommand,
+            '(?i)\.exe'
+        )
+    if ($ExeMatches.Count -eq 0) {
+        return $null
+    }
+    for (
+        $Index = $ExeMatches.Count - 1
+        $Index -ge 0
+        $Index--
+    ) {
+        $EndPosition =
+            $ExeMatches[$Index].Index +
+            $ExeMatches[$Index].Length
+        $CandidateExecutable =
+            $ExpandedCommand.Substring(
+                0,
+                $EndPosition
+            ).Trim().Trim('"')
+        $CandidateArguments =
+            $ExpandedCommand.Substring(
+                $EndPosition
+            ).Trim()
+        if (
+            Test-Path `
+                -LiteralPath $CandidateExecutable `
+                -PathType Leaf
+        ) {
+            return [PSCustomObject]@{
+                Executable =
+                    $CandidateExecutable
+                Arguments =
+                    $CandidateArguments
+            }
+        }
+    }
+    return $null
+}
+# =================================================================================================
+# FUNCTION: EXECUTE VERIFIED UNINSTALLER
+# =================================================================================================
+function Invoke-VerifiedUninstaller {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Executable,
+        [AllowEmptyString()]
+        [string]$Arguments
+    )
+    # ---------------------------------------------------------------------------------------------
+    # FINAL PRE-EXECUTION CHECK
+    # ---------------------------------------------------------------------------------------------
+    if (
+        -not (
+            Test-Path `
+                -LiteralPath $Executable `
+                -PathType Leaf
+        )
+    ) {
+        Write-Output ""
+        Write-Output "FAILED - Verified uninstall executable no longer exists:"
+        Write-Output $Executable
+        return $null
+    }
+    Write-Output ""
+    Write-Output "UNINSTALL EXECUTION"
+    Write-Output "Executable : $Executable"
+    if (
+        -not [string]::IsNullOrWhiteSpace(
+            $Arguments
+        )
+    ) {
+        Write-Output "Arguments  : $Arguments"
+    }
+    try {
+        $Process = $null
+        if (
+            -not [string]::IsNullOrWhiteSpace(
+                $Arguments
+            )
+        ) {
+            $Process =
+                Start-Process `
+                    -FilePath $Executable `
+                    -ArgumentList $Arguments `
+                    -Wait `
+                    -PassThru `
+                    -WindowStyle Hidden `
+                    -ErrorAction Stop
+        }
+        if (
+            [string]::IsNullOrWhiteSpace(
+                $Arguments
+            )
+        ) {
+            $Process =
+                Start-Process `
+                    -FilePath $Executable `
+                    -Wait `
+                    -PassThru `
+                    -WindowStyle Hidden `
+                    -ErrorAction Stop
+        }
+        Write-Output "Process completed."
+        Write-Output "Exit Code  : $($Process.ExitCode)"
+        return $Process.ExitCode
+    }
+    catch {
+        Write-Output ""
+        Write-Output "FAILED - Unable to execute verified target uninstaller."
+        Write-Output "DETAIL: $($_.Exception.Message)"
+        return $null
+    }
+}
+# =================================================================================================
+# START
+# =================================================================================================
+Write-Output "============================================================"
+Write-Output "$TargetComponent - Enterprise Targeted Removal"
+Write-Output "============================================================"
+# =================================================================================================
+# INITIAL EXACT TARGET DISCOVERY
+# =================================================================================================
+$InitialTarget =
+    Get-TargetRegistryEntry
+# =================================================================================================
+# TARGET NOT PRESENT
+# =================================================================================================
+if (-not $InitialTarget) {
+    Write-Output ""
+    Write-Output "COMPLIANT - $TargetComponent is not detected."
+    Write-Output "Exact target registry evidence not found:"
+    Write-Output $TargetRegistryDisplayPath
+    exit 0
+}
+# =================================================================================================
+# TARGET FOUND
+# =================================================================================================
+Write-Output ""
+Write-Output "TARGET REGISTRY EVIDENCE DETECTED"
+Write-Output "Registry Path   : $TargetRegistryDisplayPath"
+if ($InitialTarget.DisplayName) {
+    Write-Output "DisplayName     : $($InitialTarget.DisplayName)"
+}
+if ($InitialTarget.DisplayVersion) {
+    Write-Output "DisplayVersion  : $($InitialTarget.DisplayVersion)"
+}
+if ($InitialTarget.Publisher) {
+    Write-Output "Publisher       : $($InitialTarget.Publisher)"
+}
+if ($InitialTarget.InstallLocation) {
+    Write-Output "InstallLocation : $($InitialTarget.InstallLocation)"
+}
+# =================================================================================================
+# FAIL-CLOSED TARGET OWNERSHIP VALIDATION
+#
+# IMPORTANT:
+#
+# ControlUp testing confirmed:
+#
+#   Actual DisplayName = Path Copy Copy 19.0
+#
+# Defender component labeling identified:
+#
+#   Path Copy Copy 19
+#
+# Both are now explicitly approved target identities.
+#
+# This is NOT wildcard matching.
+# This is NOT product-name fragment matching.
+#
+# Any value outside the explicit approved list causes Exit 1.
+# =================================================================================================
+if (
+    [string]::IsNullOrWhiteSpace(
+        $InitialTarget.DisplayName
+    )
+) {
+    Write-Output ""
+    Write-Output "NON-COMPLIANT - Exact target registry key exists,"
+    Write-Output "but DisplayName is missing."
+    Write-Output ""
+    Write-Output "No destructive action performed."
+    Write-Output ""
+    Write-Output "REMAINING EVIDENCE:"
+    Write-Output $TargetRegistryDisplayPath
+    exit 1
+}
+$ActualDisplayName =
+    $InitialTarget.DisplayName.Trim()
+if (
+    $AllowedDisplayNames -cnotcontains
+    $ActualDisplayName
+) {
+    Write-Output ""
+    Write-Output "NON-COMPLIANT - Registry ownership validation failed."
+    Write-Output ""
+    Write-Output "Approved DisplayNames:"
+    foreach ($AllowedName in $AllowedDisplayNames) {
+        Write-Output "  $AllowedName"
+    }
+    Write-Output ""
+    Write-Output "Actual DisplayName:"
+    Write-Output "  $ActualDisplayName"
+    Write-Output ""
+    Write-Output "No destructive action performed."
+    Write-Output ""
+    Write-Output "REMAINING EVIDENCE:"
+    Write-Output $TargetRegistryDisplayPath
+    exit 1
+}
+Write-Output ""
+Write-Output "OWNERSHIP CONFIRMED"
+Write-Output "Approved DisplayName:"
+Write-Output $ActualDisplayName
+# =================================================================================================
+# CAPTURE VERIFIED TARGET-SPECIFIC INSTALLLOCATION
+#
+# InstallLocation is accepted only from the already verified target entry.
+# No installation path is guessed.
+# =================================================================================================
+$VerifiedInstallLocation = $null
+if (
+    -not [string]::IsNullOrWhiteSpace(
+        $InitialTarget.InstallLocation
+    )
+) {
+    $CandidateInstallLocation =
+        [Environment]::ExpandEnvironmentVariables(
+            $InitialTarget.InstallLocation.Trim().Trim('"')
+        )
+    if (
+        [System.IO.Path]::IsPathRooted(
+            $CandidateInstallLocation
+        )
+    ) {
+        $VerifiedInstallLocation =
+            $CandidateInstallLocation
+        Write-Output ""
+        Write-Output "VERIFIED INSTALLLOCATION:"
+        Write-Output $VerifiedInstallLocation
+        if (
+            Test-Path `
+                -LiteralPath $VerifiedInstallLocation
+        ) {
+            Write-Output "InstallLocation State: EXISTS"
+        }
+        if (
+            -not (
+                Test-Path `
+                    -LiteralPath $VerifiedInstallLocation
+            )
+        ) {
+            Write-Output "InstallLocation State: NOT FOUND"
+        }
+    }
+    if (
+        -not (
+            [System.IO.Path]::IsPathRooted(
+                $CandidateInstallLocation
+            )
+        )
+    ) {
+        Write-Output ""
+        Write-Output "WARNING - Registered InstallLocation is not a valid rooted path."
+        Write-Output "It will not be used as filesystem evidence."
+    }
+}
+if (
+    [string]::IsNullOrWhiteSpace(
+        $VerifiedInstallLocation
+    )
+) {
+    Write-Output ""
+    Write-Output "INFO - No verified InstallLocation is available."
+    Write-Output "No installation folder will be guessed."
+}
+# =================================================================================================
+# SELECT VERIFIED REGISTERED UNINSTALL COMMAND
+# =================================================================================================
+$RegisteredCommand = $null
+$UsingQuietUninstallString = $false
+if (
+    -not [string]::IsNullOrWhiteSpace(
+        $InitialTarget.QuietUninstallString
+    )
+) {
+    $RegisteredCommand =
+        $InitialTarget.QuietUninstallString.Trim()
+    $UsingQuietUninstallString = $true
+    Write-Output ""
+    Write-Output "UNINSTALL METHOD:"
+    Write-Output "Using verified QuietUninstallString."
+}
+if (
+    [string]::IsNullOrWhiteSpace(
+        $RegisteredCommand
+    ) -and
+    -not [string]::IsNullOrWhiteSpace(
+        $InitialTarget.UninstallString
+    )
+) {
+    $RegisteredCommand =
+        $InitialTarget.UninstallString.Trim()
+    Write-Output ""
+    Write-Output "UNINSTALL METHOD:"
+    Write-Output "Using verified UninstallString."
+}
+# =================================================================================================
+# NO VERIFIED UNINSTALL COMMAND
+# =================================================================================================
+if (
+    [string]::IsNullOrWhiteSpace(
+        $RegisteredCommand
+    )
+) {
+    Write-Output ""
+    Write-Output "NON-COMPLIANT - Confirmed $TargetComponent registration exists,"
+    Write-Output "but no registered uninstall command is available."
+    Write-Output ""
+    Write-Output "Registry key will NOT be manually deleted."
+    Write-Output ""
+    Write-Output "REMAINING EVIDENCE:"
+    Write-Output $TargetRegistryDisplayPath
+    exit 1
+}
+# =================================================================================================
+# RESOLVE REGISTERED COMMAND
+# =================================================================================================
+$ResolvedCommand =
+    Resolve-RegisteredCommand `
+        -CommandLine $RegisteredCommand
+if (-not $ResolvedCommand) {
+    Write-Output ""
+    Write-Output "NON-COMPLIANT - Registered uninstall command could not be safely resolved."
+    Write-Output ""
+    Write-Output "Registry key will NOT be manually deleted."
+    Write-Output ""
+    Write-Output "REMAINING EVIDENCE:"
+    Write-Output $TargetRegistryDisplayPath
+    exit 1
+}
+$VerifiedUninstaller =
+    $ResolvedCommand.Executable
+$VerifiedArguments =
+    $ResolvedCommand.Arguments
+# =================================================================================================
+# VERIFY UNINSTALL EXECUTABLE EXISTS
+# =================================================================================================
+if (
+    -not (
+        Test-Path `
+            -LiteralPath $VerifiedUninstaller `
+            -PathType Leaf
+    )
+) {
+    Write-Output ""
+    Write-Output "NON-COMPLIANT - Registered uninstall executable does not exist."
+    Write-Output ""
+    Write-Output "EXPECTED UNINSTALLER:"
+    Write-Output $VerifiedUninstaller
+    Write-Output ""
+    Write-Output "Registry key will NOT be deleted."
+    Write-Output "Missing uninstaller is not proof that the application is removed."
+    Write-Output ""
+    Write-Output "REMAINING EVIDENCE:"
+    Write-Output $TargetRegistryDisplayPath
+    exit 1
+}
+Write-Output ""
+Write-Output "VERIFIED UNINSTALLER:"
+Write-Output $VerifiedUninstaller
+# =================================================================================================
+# SILENT EXECUTION VALIDATION
+#
+# QuietUninstallString:
+#   Use the verified installer-supplied command.
+#
+# UninstallString:
+#   No silent switches are guessed for unknown installer technologies.
+#
+# For this exact target, correlated Inno Setup evidence requires:
+#
+#   Exact verified target registry key
+#       +
+#   unins*.exe registered executable
+#
+# Only then are supported Inno unattended switches added.
+# =================================================================================================
+if (
+    -not $UsingQuietUninstallString
+) {
+    $UninstallerFileName =
+        [System.IO.Path]::GetFileName(
+            $VerifiedUninstaller
+        )
+    $IsCorrelatedInnoUninstaller =
+        (
+            $InitialTarget.PSChildName -ceq
+            $TargetRegistryChildName
+        ) -and
+        (
+            $UninstallerFileName -match
+            '(?i)^unins\d*\.exe$'
+        )
+    if (-not $IsCorrelatedInnoUninstaller) {
+        Write-Output ""
+        Write-Output "NON-COMPLIANT - Only a standard UninstallString is available,"
+        Write-Output "and the executable cannot be safely confirmed as the expected"
+        Write-Output "Inno Setup uninstaller."
+        Write-Output ""
+        Write-Output "No silent switches will be guessed."
+        Write-Output "No destructive action performed."
+        Write-Output ""
+        Write-Output "REMAINING EVIDENCE:"
+        Write-Output $TargetRegistryDisplayPath
+        exit 1
+    }
+    # ---------------------------------------------------------------------------------------------
+    # Add supported Inno switches only if absent.
+    # ---------------------------------------------------------------------------------------------
+    if (
+        $VerifiedArguments -notmatch
+        '(?i)/(VERYSILENT|SILENT)(?:\s|$)'
+    ) {
+        $VerifiedArguments =
+            (
+                $VerifiedArguments +
+                " /VERYSILENT"
+            ).Trim()
+    }
+    if (
+        $VerifiedArguments -notmatch
+        '(?i)/SUPPRESSMSGBOXES(?:\s|$)'
+    ) {
+        $VerifiedArguments =
+            (
+                $VerifiedArguments +
+                " /SUPPRESSMSGBOXES"
+            ).Trim()
+    }
+    if (
+        $VerifiedArguments -notmatch
+        '(?i)/NORESTART(?:\s|$)'
+    ) {
+        $VerifiedArguments =
+            (
+                $VerifiedArguments +
+                " /NORESTART"
+            ).Trim()
+    }
+    if (
+        $VerifiedArguments -notmatch
+        '(?i)/SP-(?:\s|$)'
+    ) {
+        $VerifiedArguments =
+            (
+                $VerifiedArguments +
+                " /SP-"
+            ).Trim()
+    }
+    Write-Output ""
+    Write-Output "INSTALLER TECHNOLOGY:"
+    Write-Output "Correlated Inno Setup uninstaller confirmed."
+    Write-Output "Supported unattended arguments will be used."
+}
+# =================================================================================================
+# PRE-EXECUTION SAFETY SUMMARY
+# =================================================================================================
+Write-Output ""
+Write-Output "PRE-EXECUTION VALIDATION PASSED"
+Write-Output "Target          : $TargetComponent"
+Write-Output "DisplayName     : $ActualDisplayName"
+Write-Output "Registry        : $TargetRegistryDisplayPath"
+Write-Output "Uninstaller     : $VerifiedUninstaller"
+if ($VerifiedInstallLocation) {
+    Write-Output "InstallLocation : $VerifiedInstallLocation"
+}
+# =================================================================================================
+# EXECUTE VERIFIED UNINSTALLER
+# =================================================================================================
+$UninstallerExitCode =
+    Invoke-VerifiedUninstaller `
+        -Executable $VerifiedUninstaller `
+        -Arguments $VerifiedArguments
+if ($null -eq $UninstallerExitCode) {
+    Write-Output ""
+    Write-Output "WARNING - Uninstall attempt could not be completed."
+    Write-Output "No registry cleanup will be performed."
+    Write-Output "Fresh final validation will still be performed."
+}
+# =================================================================================================
+# DISCARD PRE-UNINSTALL REGISTRY OBJECT
+# =================================================================================================
+$InitialTarget = $null
+# =================================================================================================
+# ALLOW UNINSTALLER SELF-CLEANUP
+#
+# Maximum:
+#   5 checks
+#   2 seconds between checks
+# =================================================================================================
+for (
+    $Attempt = 1
+    $Attempt -le 5
+    $Attempt++
+) {
+    Start-Sleep -Seconds 2
+    $RegistryStillPresent =
+        $null -ne (
+            Get-TargetRegistryEntry
+        )
+    $UninstallerStillPresent =
+        Test-Path `
+            -LiteralPath $VerifiedUninstaller `
+            -PathType Leaf
+    $InstallLocationStillPresent =
+        $false
+    if ($VerifiedInstallLocation) {
+        $InstallLocationStillPresent =
+            Test-Path `
+                -LiteralPath $VerifiedInstallLocation
+    }
+    if (
+        -not $RegistryStillPresent -and
+        -not $UninstallerStillPresent -and
+        -not $InstallLocationStillPresent
+    ) {
+        break
+    }
+}
+# =================================================================================================
+# FRESH FINAL VALIDATION
+# =================================================================================================
+$FinalFindings =
+    New-Object System.Collections.Generic.List[string]
+# -------------------------------------------------------------------------------------------------
+# 1. Fresh exact registry validation
+# -------------------------------------------------------------------------------------------------
+$FreshTarget =
+    Get-TargetRegistryEntry
+if ($FreshTarget) {
+    $FinalFindings.Add(
+        "REGISTRY: $TargetRegistryDisplayPath"
+    )
+}
+# -------------------------------------------------------------------------------------------------
+# 2. Fresh verified uninstall executable validation
+# -------------------------------------------------------------------------------------------------
+if (
+    Test-Path `
+        -LiteralPath $VerifiedUninstaller `
+        -PathType Leaf
+) {
+    $FinalFindings.Add(
+        "FILE: $VerifiedUninstaller"
+    )
+}
+# -------------------------------------------------------------------------------------------------
+# 3. Fresh verified InstallLocation validation
+#
+# Only applicable when InstallLocation came directly from the verified target entry.
+# -------------------------------------------------------------------------------------------------
+if ($VerifiedInstallLocation) {
+    if (
+        Test-Path `
+            -LiteralPath $VerifiedInstallLocation
+    ) {
+        $FinalFindings.Add(
+            "INSTALLLOCATION: $VerifiedInstallLocation"
+        )
+    }
+}
+# =================================================================================================
+# FINAL EXIT LOGIC
+#
+# NO ELSE BLOCK.
+# =================================================================================================
+if ($FinalFindings.Count -gt 0) {
+    Write-Output ""
+    Write-Output "============================================================"
+    Write-Output "NON-COMPLIANT - $TargetComponent remnants remain."
+    Write-Output "============================================================"
+    Write-Output ""
+    Write-Output "CONFIRMED REMAINING EVIDENCE:"
+    foreach ($Finding in $FinalFindings) {
+        Write-Output "REMAINS: $Finding"
+    }
+    Write-Output ""
+    Write-Output "Uninstaller Exit Code: $UninstallerExitCode"
+    Write-Output ""
+    Write-Output "No unrelated or speculative cleanup was performed."
+    exit 1
+}
+Write-Output ""
+Write-Output "============================================================"
+Write-Output "COMPLIANT - $TargetComponent successfully removed."
+Write-Output "============================================================"
+Write-Output ""
+Write-Output "Fresh final validation:"
+Write-Output "Registry evidence       : NOT FOUND"
+Write-Output "Verified uninstaller    : NOT FOUND"
+if ($VerifiedInstallLocation) {
+    Write-Output "Verified InstallLocation: NOT FOUND"
+}
+if (-not $VerifiedInstallLocation) {
+    Write-Output "Verified InstallLocation: NOT PROVIDED BY TARGET REGISTRATION"
+}
+Write-Output ""
+Write-Output "No confirmed in-scope $TargetComponent evidence remains."
+exit 0
+
+
+
+
+
+# ================================================================================
+# RESULT
+# ================================================================================
+No confirmed in-scope Path Copy Copy 19 evidence remains.
+
+
+
+
+
+
+
+# =================================================================================================
+# Path Copy Copy 19 - Enterprise Targeted Detection Script
+#
+# Target Component:
+#   Path Copy Copy 19
+#
+# Confirmed Windows Registry DisplayName:
+#   Path Copy Copy 19.0
+#
+# Defender Software Evidence:
+#   HKLM64\{3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1
+#
+# Exact Registry Path:
+#   HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\
+#   {3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1
+#
+# ControlUp Evidence:
+#   Application Name exists
+#   No confirmed filesystem installation path supplied
+#
+# Deployment:
+#   Intune / ControlUp
+#   Run as SYSTEM
+#   Run using logged-on credentials: No
+#   64-bit registry view explicitly used
+#
+# Detection Result:
+#   Exit 1 = Detected / Non-Compliant
+#   Exit 0 = Not Detected / Compliant
+#
+#
+# =================================================================================================
+# SAFETY / DESIGN
+# =================================================================================================
+#
+# 1. EXACT REGISTRY EVIDENCE ONLY
+#    - Checks only the exact Defender-supplied HKLM64 uninstall registry key.
+#    - Does not enumerate or wildcard-match other uninstall registrations.
+#
+# 2. EXPLICIT HKLM64 ACCESS
+#    - Uses Microsoft.Win32.RegistryView.Registry64.
+#    - Does not depend on PowerShell registry redirection behavior.
+#
+# 3. STRICT TARGET DISPLAYNAME VALIDATION
+#    - Approved target-specific DisplayNames:
+#
+#         Path Copy Copy 19
+#         Path Copy Copy 19.0
+#
+#    - No wildcard matching such as "*Path Copy Copy*".
+#    - No broad publisher or product keyword matching.
+#
+# 4. FAIL-CLOSED WHEN EXACT TARGET KEY EXISTS
+#    - If the exact target registry key exists, the device remains Non-Compliant.
+#    - Missing or unexpected DisplayName metadata does NOT convert the machine to Compliant.
+#    - Unexpected metadata is reported for investigation.
+#
+# 5. NO GUESSED FILESYSTEM PATHS
+#    - ControlUp did not provide an exact filesystem path.
+#    - Therefore Program Files, AppData, ProgramData, Temp, and other locations are not searched.
+#
+# 6. NO "_is1" GENERIC MATCHING
+#    - "_is1" alone is not treated as product evidence.
+#    - Only the exact confirmed target key is checked.
+#
+# 7. REMEDIATION ALIGNMENT
+#    - The uninstall script remediates the same exact registry-registered target.
+#    - Detection and remediation therefore use the same primary target evidence.
+#
+# 8. NO FINAL ELSE BLOCK
+#    - Detected evidence -> Exit 1
+#    - No evidence       -> Exit 0
+#
+# =================================================================================================
+
+# =================================================================================================
+# TARGET CONFIGURATION
+# =================================================================================================
+$TargetComponent = "Path Copy Copy 19"
+$AllowedDisplayNames = @(
+    "Path Copy Copy 19",
+    "Path Copy Copy 19.0"
+)
+$TargetRegistryChildName =
+    "{3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1"
+$TargetRegistrySubKey =
+    "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$TargetRegistryChildName"
+$TargetRegistryDisplayPath =
+    "HKLM64\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$TargetRegistryChildName"
+# =================================================================================================
+# READ EXACT HKLM64 TARGET REGISTRY ENTRY
+# =================================================================================================
+$BaseKey = $null
+$TargetKey = $null
+$TargetExists = $false
+$DisplayName = $null
+$DisplayVersion = $null
+$Publisher = $null
+$InstallLocation = $null
+try {
+    $BaseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+        [Microsoft.Win32.RegistryHive]::LocalMachine,
+        [Microsoft.Win32.RegistryView]::Registry64
+    )
+    $TargetKey = $BaseKey.OpenSubKey(
+        $TargetRegistrySubKey,
+        $false
+    )
+    if ($TargetKey) {
+        $TargetExists = $true
+        $DisplayName =
+            $TargetKey.GetValue(
+                "DisplayName",
+                $null
+            )
+        $DisplayVersion =
+            $TargetKey.GetValue(
+                "DisplayVersion",
+                $null
+            )
+        $Publisher =
+            $TargetKey.GetValue(
+                "Publisher",
+                $null
+            )
+        $InstallLocation =
+            $TargetKey.GetValue(
+                "InstallLocation",
+                $null
+            )
+    }
+}
+catch {
+    Write-Output "NON-COMPLIANT - Unable to safely evaluate Path Copy Copy 19 target evidence."
+    Write-Output "ERROR: $($_.Exception.Message)"
+    exit 1
+}
+finally {
+    if ($TargetKey) {
+        $TargetKey.Dispose()
+    }
+    if ($BaseKey) {
+        $BaseKey.Dispose()
+    }
+}
+# =================================================================================================
+# EXACT TARGET REGISTRY KEY EXISTS
+# =================================================================================================
+if ($TargetExists) {
+    Write-Output "NON-COMPLIANT - Path Copy Copy 19 detected."
+    Write-Output "FOUND: $TargetRegistryDisplayPath"
+    # ---------------------------------------------------------------------------------------------
+    # DisplayName metadata
+    # ---------------------------------------------------------------------------------------------
+    if (
+        -not [string]::IsNullOrWhiteSpace(
+            $DisplayName
+        )
+    ) {
+        Write-Output "DisplayName: $DisplayName"
+    }
+    if (
+        -not [string]::IsNullOrWhiteSpace(
+            $DisplayVersion
+        )
+    ) {
+        Write-Output "DisplayVersion: $DisplayVersion"
+    }
+    if (
+        -not [string]::IsNullOrWhiteSpace(
+            $Publisher
+        )
+    ) {
+        Write-Output "Publisher: $Publisher"
+    }
+    if (
+        -not [string]::IsNullOrWhiteSpace(
+            $InstallLocation
+        )
+    ) {
+        Write-Output "InstallLocation: $InstallLocation"
+    }
+    # ---------------------------------------------------------------------------------------------
+    # Validate approved target identity.
+    #
+    # IMPORTANT:
+    # Even when DisplayName is missing or unexpected, the exact supplied target
+    # registry key still exists and therefore remains a Non-Compliant finding.
+    #
+    # The metadata condition is reported but does not downgrade the device to compliant.
+    # ---------------------------------------------------------------------------------------------
+    if (
+        [string]::IsNullOrWhiteSpace(
+            $DisplayName
+        )
+    ) {
+        Write-Output "WARNING: DisplayName is missing from the exact target registry entry."
+        Write-Output "Status: Exact target registry evidence remains."
+        exit 1
+    }
+    $ActualDisplayName =
+        $DisplayName.Trim()
+    if (
+        $AllowedDisplayNames -cnotcontains
+        $ActualDisplayName
+    ) {
+        Write-Output "WARNING: Unexpected DisplayName found in the exact target registry entry."
+        Write-Output "Actual DisplayName: $ActualDisplayName"
+        Write-Output "Status: Exact target registry evidence remains."
+        exit 1
+    }
+    Write-Output "Status: CONFIRMED TARGET REGISTRATION"
+    exit 1
+}
+# =================================================================================================
+# TARGET NOT DETECTED
+# =================================================================================================
+Write-Output "COMPLIANT - Path Copy Copy 19 not detected."
+Write-Output "NOT FOUND: $TargetRegistryDisplayPath"
+exit 0
+
+
+
+
+# ===============================================================================================================================================
+<# ARCHITECTURE
+
+Exact target key absent
+        ↓
+COMPLIANT
+Exit 0
+
+
+Exact target key exists
+        ↓
+DisplayName = Path Copy Copy 19
+        OR
+DisplayName = Path Copy Copy 19.0
+        ↓
+CONFIRMED TARGET
+NON-COMPLIANT
+Exit 1
+
+
+Exact target key exists
+        +
+DisplayName missing/unexpected
+        ↓
+Still NON-COMPLIANT
+but flagged as metadata anomaly
+Exit 1
+
+#> 
+# =============================================================================================================================================== 
