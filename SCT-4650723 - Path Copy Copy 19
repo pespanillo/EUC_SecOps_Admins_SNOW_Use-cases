@@ -814,3 +814,24 @@ if (-not $VerifiedInstallLocation) {
 Write-Output ""
 Write-Output "No confirmed in-scope Path Copy Copy 19 evidence remains."
 exit 0
+
+
+
+
+
+
+# =======================================================================================================
+# RESULT
+# =======================================================================================================
+NON-COMPLIANT - Registry ownership validation failed.
+
+Expected DisplayName:
+Path Copy Copy 19
+
+Actual DisplayName:
+Path Copy Copy 19.0
+
+No destructive action performed.
+
+REMAINING EVIDENCE:
+HKLM64\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1
