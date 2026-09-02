@@ -2122,3 +2122,802 @@ Registry gone + files remain
 Registry gone + files gone
 → endpoint clean, ControlUp inventory likely stale/not refreshed
 # And this is exactly why your uninstall architecture should never manually delete the registry key first. ControlUp itself documents cases where missing registry keys and remaining installation state can create inconsistent application/agent state
+
+
+
+
+
+
+
+
+# The next safe check is to see whether the same exact application identity exists anywhere else in the machine-level or user-level uninstall registrations. Run this read-only script:
+
+# =================================================================================================
+# Path Copy Copy 19 / 19.0 - Extended Registry Investigation Script
+#
+# PURPOSE:
+#   This is a READ-ONLY investigation script.
+#
+#   The original Defender evidence was:
+#
+#       HKLM64\{3C01F274-867C-4D1D-BE8C-CB488C31B0C9}_is1
+#
+#   That exact registry key has already disappeared.
+#
+#   However, ControlUp Installed Applications still displays:
+#
+#       Application : Path Copy Copy 19.0
+#       Version     : 19.0
+#       Publisher   : Charles Lechasseur
+#       64-bit      : Yes
+#       Per User    : No
+#       System      : Yes
+#
+#   Therefore, this script investigates whether another Windows uninstall registration
+#   for the SAME confirmed product still exists.
+#
+#
+# WHAT THIS SCRIPT CHECKS:
+#
+#   1. HKLM 64-bit uninstall registrations
+#   2. HKLM 32-bit uninstall registrations
+#   3. Loaded HKEY_USERS uninstall registrations
+#
+#
+# WHAT COUNTS AS A FINDING:
+#
+#   A CHILD uninstall entry must have an exact DisplayName of:
+#
+#       Path Copy Copy 19
+#
+#   OR
+#
+#       Path Copy Copy 19.0
+#
+#
+# IMPORTANT:
+#
+#   The script does NOT treat the existence of an Uninstall parent registry path
+#   as evidence.
+#
+#   It evaluates the CHILD entries underneath the uninstall location and checks
+#   their DisplayName.
+#
+#
+# WHAT THIS SCRIPT DOES NOT DO:
+#
+#   - Does NOT uninstall Path Copy Copy
+#   - Does NOT delete registry keys
+#   - Does NOT delete files or folders
+#   - Does NOT stop processes
+#   - Does NOT stop services
+#   - Does NOT search Program Files
+#   - Does NOT search AppData
+#   - Does NOT search ProgramData
+#   - Does NOT guess installation paths
+#   - Does NOT use "*Path Copy Copy*" wildcard matching
+#   - Does NOT treat "_is1" as generic evidence
+#
+#
+# EXIT CODES:
+#
+#   Exit 1
+#       = At least one exact Path Copy Copy 19 / 19.0 uninstall registration
+#         was found.
+#
+#   Exit 0
+#       = No exact matching uninstall registration was found in the registry
+#         locations checked by this script.
+#
+#
+# INTERPRETATION:
+#
+#   If Exit 1:
+#
+#       Another Path Copy Copy registration still exists.
+#       Review the output to identify:
+#
+#           RegistryView
+#           PSChildName
+#           DisplayName
+#           DisplayVersion
+#           Publisher
+#           InstallLocation
+#           UninstallString
+#           QuietUninstallString
+#
+#   If Exit 0 AND ControlUp still displays Path Copy Copy:
+#
+#       The ControlUp Installed Applications record may be stale/not refreshed,
+#       OR ControlUp may be obtaining that inventory record from another source.
+#
+#       Exit 0 from this script does NOT by itself prove that every possible
+#       Path Copy Copy file has been removed from the machine.
+#
+# =================================================================================================
+
+
+# =================================================================================================
+# TARGET CONFIGURATION
+# =================================================================================================
+#
+# These are the ONLY DisplayNames accepted as evidence.
+#
+# "Path Copy Copy 19.0" was confirmed from the actual machine.
+#
+# "Path Copy Copy 19" is retained because it is the original Defender
+# component identification.
+#
+# We deliberately use an explicit allow-list instead of:
+#
+#       *Path Copy Copy*
+#
+# This prevents unrelated or similarly named applications from being
+# accidentally classified as the target.
+# =================================================================================================
+
+$AllowedDisplayNames = @(
+    "Path Copy Copy 19",
+    "Path Copy Copy 19.0"
+)
+
+
+# =================================================================================================
+# FINDINGS COLLECTION
+# =================================================================================================
+#
+# Every confirmed matching uninstall registration will be added here.
+#
+# We do NOT immediately exit after finding the first registration because
+# the purpose of this investigation is to show ALL matching registrations
+# found in the registry locations being checked.
+#
+# Example:
+#
+#   It is theoretically possible to find:
+#
+#       HKLM64 registration
+#       +
+#       HKU registration
+#
+#   Collecting all findings gives us the complete investigation result.
+# =================================================================================================
+
+$Findings = @()
+
+
+# =================================================================================================
+# SECTION 1 - CHECK HKLM 64-BIT UNINSTALL REGISTRATIONS
+# =================================================================================================
+#
+# PURPOSE:
+#
+#   Search the native 64-bit Windows uninstall registry view for an exact
+#   Path Copy Copy DisplayName.
+#
+# This corresponds to:
+#
+#   HKEY_LOCAL_MACHINE
+#       \SOFTWARE
+#           \Microsoft
+#               \Windows
+#                   \CurrentVersion
+#                       \Uninstall
+#
+#
+# IMPORTANT:
+#
+# We explicitly open RegistryView.Registry64.
+#
+# This prevents the result from depending on whether the PowerShell process
+# itself happens to be running as 32-bit or 64-bit.
+#
+# The original Defender evidence was HKLM64, so this is an important location.
+# =================================================================================================
+
+$LM64 = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+    [Microsoft.Win32.RegistryHive]::LocalMachine,
+    [Microsoft.Win32.RegistryView]::Registry64
+)
+
+
+# -------------------------------------------------------------------------------------------------
+# Open the 64-bit Uninstall parent key in READ-ONLY mode.
+# -------------------------------------------------------------------------------------------------
+
+$LM64Uninstall = $LM64.OpenSubKey(
+    "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+)
+
+
+# -------------------------------------------------------------------------------------------------
+# Continue only if the Uninstall parent exists.
+#
+# IMPORTANT:
+#
+# The existence of the parent itself is NOT evidence of Path Copy Copy.
+# We must inspect its CHILD entries.
+# -------------------------------------------------------------------------------------------------
+
+if ($LM64Uninstall) {
+
+
+    # ---------------------------------------------------------------------------------------------
+    # Enumerate every child uninstall registration.
+    #
+    # Example child names could be:
+    #
+    #   {GUID}
+    #   ProductName
+    #   {GUID}_is1
+    #
+    # The child name itself does NOT automatically make it Path Copy Copy.
+    # ---------------------------------------------------------------------------------------------
+
+    foreach ($SubKeyName in $LM64Uninstall.GetSubKeyNames()) {
+
+
+        # -----------------------------------------------------------------------------------------
+        # Open this individual child uninstall registration.
+        # -----------------------------------------------------------------------------------------
+
+        $SubKey = $LM64Uninstall.OpenSubKey($SubKeyName)
+
+
+        if ($SubKey) {
+
+
+            # -------------------------------------------------------------------------------------
+            # Read DisplayName.
+            #
+            # This is the primary product identity used by this investigation.
+            # -------------------------------------------------------------------------------------
+
+            $DisplayName = $SubKey.GetValue(
+                "DisplayName",
+                $null
+            )
+
+
+            # -------------------------------------------------------------------------------------
+            # TARGET CORRELATION
+            #
+            # A finding is recorded ONLY when DisplayName exactly matches one of:
+            #
+            #   Path Copy Copy 19
+            #   Path Copy Copy 19.0
+            #
+            # -ccontains performs an exact case-sensitive comparison.
+            #
+            # No wildcard matching is performed.
+            # -------------------------------------------------------------------------------------
+
+            if (
+                $DisplayName -and
+                $AllowedDisplayNames -ccontains $DisplayName.Trim()
+            ) {
+
+
+                # ---------------------------------------------------------------------------------
+                # CONFIRMED HKLM64 MATCH
+                #
+                # Capture useful metadata from this exact matching child registration.
+                #
+                # Nothing is modified.
+                # ---------------------------------------------------------------------------------
+
+                $Findings += [PSCustomObject]@{
+
+                    RegistryView =
+                        "HKLM64"
+
+                    PSChildName =
+                        $SubKeyName
+
+                    DisplayName =
+                        $DisplayName
+
+                    DisplayVersion =
+                        $SubKey.GetValue(
+                            "DisplayVersion",
+                            $null
+                        )
+
+                    Publisher =
+                        $SubKey.GetValue(
+                            "Publisher",
+                            $null
+                        )
+
+                    InstallLocation =
+                        $SubKey.GetValue(
+                            "InstallLocation",
+                            $null
+                        )
+
+                    UninstallString =
+                        $SubKey.GetValue(
+                            "UninstallString",
+                            $null
+                        )
+
+                    QuietUninstallString =
+                        $SubKey.GetValue(
+                            "QuietUninstallString",
+                            $null
+                        )
+                }
+            }
+
+
+            # -------------------------------------------------------------------------------------
+            # Close this child registry key after reading it.
+            # -------------------------------------------------------------------------------------
+
+            $SubKey.Dispose()
+        }
+    }
+
+
+    # ---------------------------------------------------------------------------------------------
+    # Close the HKLM64 Uninstall parent.
+    # ---------------------------------------------------------------------------------------------
+
+    $LM64Uninstall.Dispose()
+}
+
+
+# -------------------------------------------------------------------------------------------------
+# Close HKLM64 base registry handle.
+# -------------------------------------------------------------------------------------------------
+
+$LM64.Dispose()
+
+
+# =================================================================================================
+# SECTION 2 - CHECK HKLM 32-BIT UNINSTALL REGISTRATIONS
+# =================================================================================================
+#
+# PURPOSE:
+#
+#   Determine whether Path Copy Copy has another machine-level registration
+#   in the 32-bit registry view.
+#
+# On a 64-bit Windows system, this logically corresponds to the 32-bit
+# application registration area commonly represented as:
+#
+#   HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
+#
+#
+# IMPORTANT:
+#
+# We use RegistryView.Registry32 instead of manually depending on registry
+# redirection.
+#
+# Again, only exact child DisplayName matches count as evidence.
+# =================================================================================================
+
+$LM32 = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+    [Microsoft.Win32.RegistryHive]::LocalMachine,
+    [Microsoft.Win32.RegistryView]::Registry32
+)
+
+
+# -------------------------------------------------------------------------------------------------
+# Open the 32-bit Uninstall parent in READ-ONLY mode.
+# -------------------------------------------------------------------------------------------------
+
+$LM32Uninstall = $LM32.OpenSubKey(
+    "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+)
+
+
+if ($LM32Uninstall) {
+
+
+    # ---------------------------------------------------------------------------------------------
+    # Enumerate each 32-bit uninstall child registration.
+    # ---------------------------------------------------------------------------------------------
+
+    foreach ($SubKeyName in $LM32Uninstall.GetSubKeyNames()) {
+
+
+        $SubKey = $LM32Uninstall.OpenSubKey(
+            $SubKeyName
+        )
+
+
+        if ($SubKey) {
+
+
+            # -------------------------------------------------------------------------------------
+            # Read this child's DisplayName.
+            # -------------------------------------------------------------------------------------
+
+            $DisplayName = $SubKey.GetValue(
+                "DisplayName",
+                $null
+            )
+
+
+            # -------------------------------------------------------------------------------------
+            # Record only an EXACT approved target DisplayName.
+            # -------------------------------------------------------------------------------------
+
+            if (
+                $DisplayName -and
+                $AllowedDisplayNames -ccontains $DisplayName.Trim()
+            ) {
+
+
+                # ---------------------------------------------------------------------------------
+                # CONFIRMED HKLM32 MATCH
+                # ---------------------------------------------------------------------------------
+
+                $Findings += [PSCustomObject]@{
+
+                    RegistryView =
+                        "HKLM32"
+
+                    PSChildName =
+                        $SubKeyName
+
+                    DisplayName =
+                        $DisplayName
+
+                    DisplayVersion =
+                        $SubKey.GetValue(
+                            "DisplayVersion",
+                            $null
+                        )
+
+                    Publisher =
+                        $SubKey.GetValue(
+                            "Publisher",
+                            $null
+                        )
+
+                    InstallLocation =
+                        $SubKey.GetValue(
+                            "InstallLocation",
+                            $null
+                        )
+
+                    UninstallString =
+                        $SubKey.GetValue(
+                            "UninstallString",
+                            $null
+                        )
+
+                    QuietUninstallString =
+                        $SubKey.GetValue(
+                            "QuietUninstallString",
+                            $null
+                        )
+                }
+            }
+
+
+            # -------------------------------------------------------------------------------------
+            # Close child registry key.
+            # -------------------------------------------------------------------------------------
+
+            $SubKey.Dispose()
+        }
+    }
+
+
+    # ---------------------------------------------------------------------------------------------
+    # Close HKLM32 Uninstall parent.
+    # ---------------------------------------------------------------------------------------------
+
+    $LM32Uninstall.Dispose()
+}
+
+
+# -------------------------------------------------------------------------------------------------
+# Close HKLM32 base registry handle.
+# -------------------------------------------------------------------------------------------------
+
+$LM32.Dispose()
+
+
+# =================================================================================================
+# SECTION 3 - CHECK LOADED HKEY_USERS PROFILES
+# =================================================================================================
+#
+# PURPOSE:
+#
+#   Determine whether a loaded user profile contains a per-user uninstall
+#   registration for the same confirmed Path Copy Copy product.
+#
+# Example:
+#
+#   HKEY_USERS
+#       \S-1-5-21-...
+#           \Software
+#               \Microsoft
+#                   \Windows
+#                       \CurrentVersion
+#                           \Uninstall
+#
+#
+# WHY CHECK THIS?
+#
+# Even though ControlUp currently reports:
+#
+#       Per User = No
+#       System   = Yes
+#
+# checking loaded HKU registrations helps confirm whether another user-level
+# registration exists.
+#
+#
+# CRITICAL SAFETY RULE:
+#
+# We NEVER use:
+#
+#       HKEY_USERS\<SID>\...\Uninstall\*
+#
+# merely existing as evidence.
+#
+# We enumerate CHILD entries and inspect their DisplayName.
+#
+# Only a child entry with the exact approved DisplayName is recorded.
+# =================================================================================================
+
+
+# -------------------------------------------------------------------------------------------------
+# Get currently loaded HKEY_USERS hives.
+#
+# "_Classes" hives are excluded because they are not independent user profile
+# uninstall inventories for this purpose.
+# -------------------------------------------------------------------------------------------------
+
+$UserSids =
+    Get-ChildItem `
+        Registry::HKEY_USERS `
+        -ErrorAction SilentlyContinue |
+    Where-Object {
+
+        $_.PSChildName -notlike "*_Classes"
+    }
+
+
+# -------------------------------------------------------------------------------------------------
+# Check each currently loaded user hive.
+# -------------------------------------------------------------------------------------------------
+
+foreach ($UserSid in $UserSids) {
+
+
+    # ---------------------------------------------------------------------------------------------
+    # Build the two possible per-user uninstall locations we want to inspect.
+    #
+    # These are SEARCH LOCATIONS only.
+    #
+    # Their existence alone is NOT considered evidence.
+    # ---------------------------------------------------------------------------------------------
+
+    $UserUninstallPaths = @(
+
+        "Registry::HKEY_USERS\$($UserSid.PSChildName)\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+
+        "Registry::HKEY_USERS\$($UserSid.PSChildName)\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
+
+
+    foreach ($UserPath in $UserUninstallPaths) {
+
+
+        # -----------------------------------------------------------------------------------------
+        # Enumerate CHILD uninstall entries.
+        #
+        # SilentlyContinue means a user hive without this location does not cause
+        # the investigation to fail.
+        # -----------------------------------------------------------------------------------------
+
+        Get-ChildItem `
+            -LiteralPath $UserPath `
+            -ErrorAction SilentlyContinue |
+        ForEach-Object {
+
+
+            # -------------------------------------------------------------------------------------
+            # Read this individual child uninstall registration.
+            # -------------------------------------------------------------------------------------
+
+            $Entry =
+                Get-ItemProperty `
+                    -LiteralPath $_.PSPath `
+                    -ErrorAction SilentlyContinue
+
+
+            # -------------------------------------------------------------------------------------
+            # Record only an exact approved DisplayName.
+            #
+            # The parent uninstall path itself is NOT evidence.
+            # -------------------------------------------------------------------------------------
+
+            if (
+                $Entry.DisplayName -and
+                $AllowedDisplayNames -ccontains $Entry.DisplayName.Trim()
+            ) {
+
+
+                # ---------------------------------------------------------------------------------
+                # CONFIRMED HKU MATCH
+                # ---------------------------------------------------------------------------------
+
+                $Findings += [PSCustomObject]@{
+
+                    RegistryView =
+                        "HKU:$($UserSid.PSChildName)"
+
+                    PSChildName =
+                        $_.PSChildName
+
+                    DisplayName =
+                        $Entry.DisplayName
+
+                    DisplayVersion =
+                        $Entry.DisplayVersion
+
+                    Publisher =
+                        $Entry.Publisher
+
+                    InstallLocation =
+                        $Entry.InstallLocation
+
+                    UninstallString =
+                        $Entry.UninstallString
+
+                    QuietUninstallString =
+                        $Entry.QuietUninstallString
+                }
+            }
+        }
+    }
+}
+
+
+# =================================================================================================
+# FINAL RESULT
+# =================================================================================================
+#
+# At this point:
+#
+#   $Findings.Count > 0
+#
+# means at least one exact Path Copy Copy 19 / 19.0 uninstall registration
+# was found.
+#
+# The script prints ALL matching registrations so we can identify where
+# ControlUp may be obtaining its application inventory evidence.
+# =================================================================================================
+
+if ($Findings.Count -gt 0) {
+
+    Write-Output "============================================================"
+    Write-Output "PATH COPY COPY REGISTRATION STILL EXISTS"
+    Write-Output "============================================================"
+
+    Write-Output ""
+
+    $Findings |
+        Format-List
+
+    Write-Output ""
+    Write-Output "RESULT:"
+    Write-Output "At least one exact Path Copy Copy 19 / 19.0 registration remains."
+    Write-Output ""
+    Write-Output "READ-ONLY INVESTIGATION - NO DELETION WAS PERFORMED."
+
+    exit 1
+}
+
+
+# =================================================================================================
+# CLEAN REGISTRY RESULT
+# =================================================================================================
+#
+# Reaching this point means:
+#
+#   No exact approved DisplayName was found under:
+#
+#       HKLM64 uninstall children
+#       HKLM32 uninstall children
+#       Loaded HKEY_USERS uninstall children
+#
+#
+# IMPORTANT:
+#
+# This means:
+#
+#       "No matching uninstall REGISTRATION was found."
+#
+# It does NOT automatically mean:
+#
+#       "Every Path Copy Copy file on the machine is gone."
+#
+#
+# If ControlUp continues displaying the application after this result,
+# investigate:
+#
+#   1. ControlUp inventory refresh / stale inventory
+#
+#   OR
+#
+#   2. Another inventory source used by ControlUp
+#
+# before performing any additional cleanup.
+# =================================================================================================
+
+Write-Output "============================================================"
+Write-Output "NO EXACT PATH COPY COPY REGISTRATION FOUND"
+Write-Output "============================================================"
+
+Write-Output ""
+Write-Output "Checked:"
+Write-Output "  HKLM64 uninstall child entries"
+Write-Output "  HKLM32 uninstall child entries"
+Write-Output "  Loaded HKEY_USERS uninstall child entries"
+
+Write-Output ""
+Write-Output "No exact DisplayName match found for:"
+Write-Output "  Path Copy Copy 19"
+Write-Output "  Path Copy Copy 19.0"
+
+Write-Output ""
+Write-Output "IMPORTANT:"
+Write-Output "This proves no matching uninstall registration was found in the checked locations."
+Write-Output "It does NOT by itself prove that every application file has been removed."
+
+Write-Output ""
+Write-Output "If ControlUp still displays Path Copy Copy 19.0,"
+Write-Output "investigate ControlUp inventory refresh/state before deleting anything else."
+
+Write-Output ""
+Write-Output "READ-ONLY INVESTIGATION - NO DELETION WAS PERFORMED."
+
+exit 0
+
+
+
+
+
+
+# ============================================================================================================
+# ARCHITECTURE
+# ============================================================================================================
+                    READ-ONLY INVESTIGATION
+                            │
+                            ▼
+                 Exact approved identities
+                  19 / 19.0 only
+                            │
+          ┌─────────────────┼─────────────────┐
+          ▼                 ▼                 ▼
+       HKLM64            HKLM32         Loaded HKEY_USERS
+          │                 │                 │
+          └─────────────────┼─────────────────┘
+                            ▼
+                  Examine CHILD entries
+                            │
+                            ▼
+              Exact DisplayName match?
+                     │             │
+                    YES            NO
+                     │             │
+                     ▼             ▼
+              Capture metadata   Continue
+                     │
+                     ▼
+              Any findings?
+                │         │
+               YES        NO
+                │          │
+                ▼          ▼
+             EXIT 1      EXIT 0
+           Registration   No matching
+           still exists   registration
