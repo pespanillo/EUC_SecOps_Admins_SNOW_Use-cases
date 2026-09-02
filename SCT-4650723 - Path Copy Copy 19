@@ -2022,3 +2022,103 @@ Exit 1
 
 #> 
 # =============================================================================================================================================== 
+
+
+
+
+# ---------------------------------------------------------------------------------------------------------- END ------------------------------------------------------------------------------------------------------------------
+
+
+# This safely enumerates child uninstall entries and reports only entries whose exact DisplayName is one of our approved Path Copy Copy values. It does not delete anything.
+
+# ================================================================================================
+# Path Copy Copy 19 - Registry Investigation
+# READ ONLY - NO DELETION
+# ================================================================================================
+$AllowedDisplayNames = @(
+    "Path Copy Copy 19",
+    "Path Copy Copy 19.0"
+)
+$Findings = @()
+# ------------------------------------------------------------------------------------------------
+# HKLM 64-bit
+# ------------------------------------------------------------------------------------------------
+$Path64 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+Get-ChildItem -LiteralPath $Path64 -ErrorAction SilentlyContinue | ForEach-Object {
+    $Entry = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
+    if (
+        $Entry.DisplayName -and
+        $AllowedDisplayNames -ccontains $Entry.DisplayName.Trim()
+    ) {
+        $Findings += [PSCustomObject]@{
+            RegistryView         = "HKLM64"
+            DisplayName          = $Entry.DisplayName
+            DisplayVersion       = $Entry.DisplayVersion
+            Publisher            = $Entry.Publisher
+            PSChildName          = $_.PSChildName
+            InstallLocation      = $Entry.InstallLocation
+            UninstallString      = $Entry.UninstallString
+            QuietUninstallString = $Entry.QuietUninstallString
+        }
+    }
+}
+# ------------------------------------------------------------------------------------------------
+# HKLM 32-bit
+# ------------------------------------------------------------------------------------------------
+$Path32 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+Get-ChildItem -LiteralPath $Path32 -ErrorAction SilentlyContinue | ForEach-Object {
+    $Entry = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
+    if (
+        $Entry.DisplayName -and
+        $AllowedDisplayNames -ccontains $Entry.DisplayName.Trim()
+    ) {
+        $Findings += [PSCustomObject]@{
+            RegistryView         = "HKLM32"
+            DisplayName          = $Entry.DisplayName
+            DisplayVersion       = $Entry.DisplayVersion
+            Publisher            = $Entry.Publisher
+            PSChildName          = $_.PSChildName
+            InstallLocation      = $Entry.InstallLocation
+            UninstallString      = $Entry.UninstallString
+            QuietUninstallString = $Entry.QuietUninstallString
+        }
+    }
+}
+# ------------------------------------------------------------------------------------------------
+# RESULT
+# ------------------------------------------------------------------------------------------------
+if ($Findings.Count -gt 0) {
+    Write-Output "PATH COPY COPY REGISTRATION STILL EXISTS"
+    $Findings | Format-List
+    exit 1
+}
+Write-Output "NO MATCHING PATH COPY COPY REGISTRATION FOUND IN HKLM64 OR HKLM32."
+exit 0
+
+
+
+
+
+
+# =========================================================================================================================================
+# How to interpret the result
+# =========================================================================================================================================
+
+# If you get something like:
+RegistryView   : HKLM64
+DisplayName    : Path Copy Copy 19.0
+PSChildName    : another-key
+UninstallString: C:\...\unins000.exe
+# then ControlUp is not stale. There is still another registration, and we need to target that exact evidence.
+
+# If you get:
+NO MATCHING PATH COPY COPY REGISTRATION FOUND IN HKLM64 OR HKLM32.
+# but ControlUp still shows the application, then the next likely explanation is ControlUp inventory/cache has not refreshed yet.
+
+# At that point, I would also check whether the previously registered uninstaller/file path still exists. That distinguishes:
+Registry gone + files remain
+→ incomplete/manual cleanup
+# from:
+Registry gone + files gone
+→ endpoint clean, ControlUp inventory likely stale/not refreshed
+# And this is exactly why your uninstall architecture should never manually delete the registry key first. ControlUp itself documents cases where missing registry keys and remaining installation state can create inconsistent application/agent state
