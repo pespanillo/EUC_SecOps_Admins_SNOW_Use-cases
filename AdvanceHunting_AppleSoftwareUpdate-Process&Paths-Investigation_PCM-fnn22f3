@@ -1,0 +1,60 @@
+//AdvanceHunting_AppleSoftwareUpdate-Process&Paths-Investigation_PCM-fnn22f3
+let TargetDeviceId =
+    toscalar(
+        DeviceInfo
+        | where Timestamp >= ago(30d)
+        | where DeviceName contains "fnn22f3"
+        | summarize arg_max(Timestamp, DeviceId)
+        | project DeviceId
+    );
+DeviceProcessEvents
+| where Timestamp >= ago(30d)
+| where DeviceId == TargetDeviceId
+// ---------------------------------------------------------
+// TARGET: SOFTWAREUPDATE.EXE OR APPLE SOFTWARE UPDATE PATH
+// ---------------------------------------------------------
+| where
+    InitiatingProcessFileName =~ "SoftwareUpdate.exe"
+    or FileName =~ "SoftwareUpdate.exe"
+    or InitiatingProcessFolderPath contains @"\Apple\Apple Software Update"
+    or FolderPath contains @"\Apple\Apple Software Update"
+// ---------------------------------------------------------
+// PROCESS CHAIN
+// ---------------------------------------------------------
+| project
+    Timestamp,
+    DeviceName,
+    // GRANDPARENT PROCESS
+    GrandParentFileName = InitiatingProcessParentFileName,
+    GrandParentPID = InitiatingProcessParentId,
+    // PARENT PROCESS
+    ParentFileName = InitiatingProcessFileName,
+    ParentPath = InitiatingProcessFolderPath,
+    ParentCommandLine = InitiatingProcessCommandLine,
+    ParentPID = InitiatingProcessId,
+    ParentSHA256 = InitiatingProcessSHA256,
+    ParentSHA1 = InitiatingProcessSHA1,
+    // CHILD PROCESS
+    ChildFileName = FileName,
+    ChildPath = FolderPath,
+    ChildCommandLine = ProcessCommandLine,
+    ChildPID = ProcessId,
+    ChildSHA256 = SHA256,
+    ChildSHA1 = SHA1,
+    // USER CONTEXT
+    ChildUser = strcat(AccountDomain, @"\", AccountName),
+    ParentUser = strcat(
+        InitiatingProcessAccountDomain,
+        @"\",
+        InitiatingProcessAccountName
+    )
+// ---------------------------------------------------------
+// FINAL OUTPUT
+// ---------------------------------------------------------
+| project
+    Timestamp,
+    DeviceName,
+    ParentPath,
+    ChildPath
+| order by Timestamp desc
+
