@@ -41,5 +41,4 @@ DeviceProcessEvents
     AccountName,
     InitiatingProcessAccountDomain,
     InitiatingProcessAccountName
-
 | order by DeviceName asc, Timestamp desc
