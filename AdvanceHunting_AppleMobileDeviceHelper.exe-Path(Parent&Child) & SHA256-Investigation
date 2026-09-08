@@ -1,3 +1,4 @@
+
 DeviceProcessEvents
 | where Timestamp >= ago(30d)
 | where DeviceName startswith "pc"
@@ -60,3 +61,41 @@ DeviceProcessEvents
     //ChildCommandLine,
     //ChildSHA256
 | order by DeviceName asc, Timestamp desc
+
+
+
+
+
+
+
+
+/
+DeviceProcessEvents
+| where Timestamp >= ago(30d)
+| where FileName =~ "iTunes.exe"
+| where FolderPath =~ @"C:\Program Files\iTunes"
+| project
+    Timestamp,
+    DeviceName,
+    DeviceId,
+    FileName,
+    FolderPath,
+    ProcessCommandLine,
+    SHA256
+| order by Timestamp desc
+
+
+
+
+
+
+DeviceTvmSoftwareInventory
+| where SoftwareName contains "itunes"
+    or SoftwareName contains "apple"
+    or SoftwareVendor contains "apple"
+| project
+    DeviceName,
+    SoftwareVendor,
+    SoftwareName,
+    SoftwareVersion
+| order by SoftwareName asc, DeviceName asc
