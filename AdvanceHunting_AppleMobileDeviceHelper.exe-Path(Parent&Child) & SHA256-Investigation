@@ -1,45 +1,62 @@
-//AdvanceHunting_AppleMobileDeviceHelper.exe-Path(Parent&Child) & SHA256-Investigation
 DeviceProcessEvents
 | where Timestamp >= ago(30d)
-// STRICT TARGET FILE
-| where FileName =~ "AppleMobileDeviceHelper.exe"
-// STRICT PARENT PROCESS
-| where InitiatingProcessFileName =~ "itunes.exe"
-// WORKSTATION SCOPE
 | where DeviceName startswith "pc"
+| where InitiatingProcessFileName =~ "itunes.exe"
+| where FileName in~ (
+    "AppleMobileSync.exe",
+    "AppleMobileDeviceHelper.exe"
+)
 | project
     Timestamp,
     DeviceName,
     DeviceId,
     ActionType,
-    // =========================================================
-    // TARGET FILE - AppleMobileDeviceHelper.exe
-    // =========================================================
-    TargetFileName = FileName,
-    TargetFolderPath = FolderPath,
-    TargetSHA256 = SHA256,
-    TargetSHA1 = SHA1,
-    TargetCommandLine = ProcessCommandLine,
-    TargetProcessId = ProcessId,
-    // =========================================================
-    // PARENT PROCESS - iTunes.exe
-    // =========================================================
+    // ============================================================
+    // CHILD PROCESS
+    // ============================================================
+    ChildFileName = FileName,
+    ChildPath = FolderPath,
+    ChildCommandLine = ProcessCommandLine,
+    ChildProcessId = ProcessId,
+    ChildSHA256 = SHA256,
+    // ============================================================
+    // DIRECT PARENT PROCESS
+    // Process that launched the child
+    // ============================================================
     ParentFileName = InitiatingProcessFileName,
-    ParentFolderPath = InitiatingProcessFolderPath,
-    ParentSHA256 = InitiatingProcessSHA256,
-    ParentSHA1 = InitiatingProcessSHA1,
+    ParentPath = InitiatingProcessFolderPath,
     ParentCommandLine = InitiatingProcessCommandLine,
     ParentProcessId = InitiatingProcessId,
-    // =========================================================
-    // GRANDPARENT PROCESS
-    // =========================================================
+    ParentSHA256 = InitiatingProcessSHA256,
+    // ============================================================
+    // GRANDPARENT
+    // Parent of the initiating process
+    // ============================================================
     GrandParentFileName = InitiatingProcessParentFileName,
     GrandParentProcessId = InitiatingProcessParentId,
-    // =========================================================
+    // ============================================================
     // USER CONTEXT
-    // =========================================================
-    AccountDomain,
-    AccountName,
-    InitiatingProcessAccountDomain,
-    InitiatingProcessAccountName
+    // ============================================================
+    ChildAccount = strcat(AccountDomain, "\\", AccountName),
+    ParentAccount = strcat(
+        InitiatingProcessAccountDomain,
+        "\\",
+        InitiatingProcessAccountName
+    )
+| project
+    Timestamp,
+    DeviceName,
+    DeviceId,
+    //ParentAccount,
+    //ChildAccount,
+    //ActionType,
+    //GrandParentFileName,
+    ParentFileName,
+    ParentPath,
+    //ParentCommandLine,
+    //ParentSHA256,
+    ChildFileName,
+    ChildPath
+    //ChildCommandLine,
+    //ChildSHA256
 | order by DeviceName asc, Timestamp desc
