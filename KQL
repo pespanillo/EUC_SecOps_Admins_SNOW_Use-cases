@@ -21,3 +21,61 @@ DeviceTvmSoftwareVulnerabilities
         SoftwareName,
         SoftwareVersion
 | order by AffectedDevices desc
+
+
+
+
+// ============================================================
+// TARGET SOFTWARE
+// Exact SoftwareName values to include
+// ============================================================
+let TargetSoftware = dynamic([
+    "chrome",
+    "edge_chromium-based",
+    "jdk",
+    "jre",
+    "firefox",
+    "php",
+    "office",
+    "reader",
+    "weblogic_server",
+    "firefox_esr",
+    "vim",
+    "mysql",
+    "sql_server_2019",
+    "pdf_reader",
+    "pdf_editor",
+    "indesign",
+    "sql_server_2022",
+    "tomcat",
+    "sql_server_2017",
+    "phantompdf",
+    "mongodb",
+    "python",
+    "illustrator",
+    "office_2016",
+    "visual_studio_2022",
+    "nodejs",
+    "photoshop",
+    "quicktime",
+    ".net",
+    "n8n",
+    "postgresql"
+]);
+// ============================================================
+// VULNERABLE DEVICES
+// Only PC* devices + only target software
+// ============================================================
+DeviceTvmSoftwareVulnerabilities
+| where isnotempty(DeviceName)
+| where DeviceName startswith "PC"
+| where SoftwareName in~ (TargetSoftware)
+| summarize
+    AffectedDevices = dcount(DeviceId)
+    by
+        CveId,
+        VulnerabilitySeverityLevel,
+        SoftwareVendor,
+        SoftwareName,
+        SoftwareVersion
+| order by AffectedDevices desc
