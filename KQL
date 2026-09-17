@@ -5,3 +5,19 @@ DeviceTvmSoftwareVulnerabilities
     AffectedDevices = dcount(DeviceId)
     by CveId, VulnerabilitySeverityLevel, SoftwareName, SoftwareVendor // SoftwareVersion
 | order by AffectedDevices desc
+
+
+
+# Breakdown by software version for every CVE, while strictly counting only devices whose names start with PC, add SoftwareVersion to the grouping.
+DeviceTvmSoftwareVulnerabilities
+| where isnotempty(DeviceName)
+| where DeviceName startswith "PC"
+| summarize
+    AffectedDevices = dcount(DeviceId)
+    by
+        CveId,
+        VulnerabilitySeverityLevel,
+        SoftwareVendor,
+        SoftwareName,
+        SoftwareVersion
+| order by AffectedDevices desc
