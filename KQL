@@ -3,5 +3,5 @@ DeviceTvmSoftwareVulnerabilities
 | where DeviceName startswith "PC"
 | summarize
     AffectedDevices = dcount(DeviceId)
-    by CveId, VulnerabilitySeverityLevel
+    by CveId, VulnerabilitySeverityLevel, SoftwareName, SoftwareVendor // SoftwareVersion
 | order by AffectedDevices desc
