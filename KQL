@@ -1,0 +1,7 @@
+# Searches pc reported in Vulnerabilities, also it includes severity and ensure that device count is explicitly unique:
+DeviceTvmSoftwareVulnerabilities
+| where DeviceName startswith "PC"
+| summarize
+    AffectedDevices = dcount(DeviceId)
+    by CveId, VulnerabilitySeverityLevel
+| order by AffectedDevices desc
