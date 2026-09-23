@@ -79,3 +79,169 @@ DeviceTvmSoftwareVulnerabilities
         SoftwareName,
         SoftwareVersion
 | order by AffectedDevices desc
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+openssl
+
+
+// ============================================================
+// Retrieves affected devices, software versions, file paths and registry paths  / Initial CVE investigation
+// This combines the CVE findings with DeviceTvmSoftwareEvidenceBeta, which provides the actual disk and registry paths Defender used to identify the software.
+// This query retains vulnerable software records even when Defender has no associated file or registry evidence.
+// ============================================================
+let TargetCVE = "CVE-2026-45446";
+let VulnerableSoftware =
+    DeviceTvmSoftwareVulnerabilities
+    | where CveId == TargetCVE
+    | distinct
+        DeviceId,
+        DeviceName,
+        SoftwareVendor,
+        SoftwareName,
+        SoftwareVersion,
+        CveId,
+        VulnerabilitySeverityLevel;
+VulnerableSoftware
+| join kind=leftouter (
+    DeviceTvmSoftwareEvidenceBeta
+    | project
+        DeviceId,
+        SoftwareVendor,
+        SoftwareName,
+        SoftwareVersion,
+        DiskPaths,
+        RegistryPaths,
+        LastSeenTime
+) on
+    DeviceId,
+    SoftwareVendor,
+    SoftwareName,
+    SoftwareVersion
+| project
+    DeviceName,
+    DeviceId,
+    CveId,
+    VulnerabilitySeverityLevel,
+    SoftwareVendor,
+    SoftwareName,
+    SoftwareVersion,
+    DiskPaths,
+    RegistryPaths,
+    LastSeenTime
+| order by DeviceName asc
+
+
+
+
+
+
+// ============================================================
+//Expands file and registry evidence into individual rows
+// when you need each file or registry path in a separate row for Excel export, remediation scripting or validation.
+// ============================================================
+let TargetCVE = "CVE-2026-45446";
+let Affected =
+    DeviceTvmSoftwareVulnerabilities
+    | where CveId == TargetCVE
+    | distinct
+        DeviceId,
+        DeviceName,
+        SoftwareVendor,
+        SoftwareName,
+        SoftwareVersion;
+Affected
+| join kind=inner (
+    DeviceTvmSoftwareEvidenceBeta
+) on
+    DeviceId,
+    SoftwareVendor,
+    SoftwareName,
+    SoftwareVersion
+| extend Evidence = array_concat(
+    pack_array(),
+    iff(
+        isnotempty(DiskPaths),
+        pack_array(pack(
+            "Type", "Disk",
+            "Paths", DiskPaths
+        )),
+        dynamic([])
+    ),
+    iff(
+        isnotempty(RegistryPaths),
+        pack_array(pack(
+            "Type", "Registry",
+            "Paths", RegistryPaths
+        )),
+        dynamic([])
+    )
+)
+| mv-expand Evidence
+| extend
+    EvidenceType = tostring(Evidence.Type),
+    Paths = Evidence.Paths
+| mv-expand EvidencePath = Paths to typeof(string)
+| project
+    DeviceName,
+    SoftwareName,
+    SoftwareVersion,
+    EvidenceType,
+    EvidencePath,
+    LastSeenTime
+| order by DeviceName asc, EvidenceType asc
+
+
+
+
+
+// ============================================================
+// Investigate additional OpenSSL file and registry activity
+// Use these queries when Defender's software evidence is missing or incomplete. They search recorded activity, not the device's entire current file system or registry.
+// ============================================================
+// File evidence
+let AffectedDevices =
+    DeviceTvmSoftwareVulnerabilities
+    | where CveId == "CVE-2026-45446"
+    | distinct DeviceId;
+DeviceFileEvents
+| where Timestamp >= ago(30d)
+| where DeviceId in (AffectedDevices)
+| where FileName in~ (
+    "libcrypto-3-x64.dll",
+    "libcrypto-3.dll",
+    "libssl-3-x64.dll",
+    "libssl-3.dll",
+    "openssl.exe"
+)
+| project
+    Timestamp,
+    DeviceName,
+    ActionType,
+    FileName,
+    FolderPath,
+    SHA1,
+    InitiatingProcessFileName,
+    InitiatingProcessFolderPath
+| order by Timestamp desc
+
+// Registry evidence
+let AffectedDevices =
+    DeviceTvmSoftwareVulnerabilities
+    | where CveId == "CVE-2026-45446"
+    | distinct DeviceId;
+DeviceRegistryEvents
+| where Timestamp >= ago(30d)
+| where DeviceId in (AffectedDevices)
+| where RegistryKey contains "OpenSSL"
+    or RegistryValueData contains "OpenSSL"
+| project
+    Timestamp,
+    DeviceName,
+    ActionType,
+    RegistryKey,
+    RegistryValueName,
+    RegistryValueData,
+    InitiatingProcessFileName
+| order by Timestamp desc
