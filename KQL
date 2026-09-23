@@ -95,6 +95,7 @@ let TargetCVE = "CVE-2026-45446";
 let VulnerableSoftware =
     DeviceTvmSoftwareVulnerabilities
     | where CveId == TargetCVE
+    | where DeviceName startswith "PC"
     | distinct
         DeviceId,
         DeviceName,
