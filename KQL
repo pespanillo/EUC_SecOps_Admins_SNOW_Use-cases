@@ -286,8 +286,69 @@ DeviceTvmSoftwareEvidenceBeta
 
 
 
+
+
 // ============================================================
-// Identify which OpenSSL evidence matches the target CVE
+// Identify which OpenSSL evidence matches the target CVE - NEW WITH CVEID, DISREGARD NEXT BELOW
+// Your previous comparison query used a left outer join, which is appropriate for retaining unmatched evidence. However, its result must be interpreted carefully.
+// NO MATCH IN VULNERABILITY TABLE does not mean that the software is secure, patched or unaffected. It means only that the evidence record did not match a vulnerability record using the specified device ID, vendor, software name and version.
+// Differences in product identification or version normalization can also prevent a match. Microsoft's documentation defines these columns but does not guarantee that every evidence record will have a corresponding vulnerability record.
+// ============================================================
+let TargetCVE = "CVE-2026-31789";
+let TargetDevice = "PCM-BD8TFY3";
+let VulnerableSoftware =
+    DeviceTvmSoftwareVulnerabilities
+    | where CveId == TargetCVE
+    | where DeviceName contains TargetDevice
+    | distinct
+        DeviceId,
+        SoftwareVendor,
+        SoftwareName,
+        SoftwareVersion,
+        CveId
+    | extend CVEMatch = "YES";
+let TargetDeviceIds =
+    DeviceTvmSoftwareVulnerabilities
+    | where DeviceName contains TargetDevice
+    | distinct DeviceId;
+DeviceTvmSoftwareEvidenceBeta
+| where DeviceId in (TargetDeviceIds)
+| where SoftwareName contains "openssl"
+    or SoftwareVendor contains "openssl"
+    or tostring(DiskPaths) contains "libcrypto"
+    or tostring(DiskPaths) contains "libssl"
+| join kind=leftouter (
+    VulnerableSoftware
+) on
+    DeviceId,
+    SoftwareVendor,
+    SoftwareName,
+    SoftwareVersion
+| extend CVEMatch = iff(
+    CVEMatch == "YES",
+    "YES",
+    "NO MATCH IN VULNERABILITY TABLE"
+)
+// Extract each individual file path.
+| mv-expand DiskPath = DiskPaths to typeof(string)
+| project
+    DeviceId,
+    CveId,
+    CVEMatch,
+    SoftwareVendor,
+    SoftwareName,
+    SoftwareVersion,
+    DiskPath,
+    RegistryPaths,
+    LastSeenTime
+| order by CVEMatch desc, SoftwareVersion asc, DiskPath asc
+
+
+
+
+
+// ============================================================
+// Identify which OpenSSL evidence matches the target CVE - OLD WITHOUT CVE ID; USE THE ABOVE
 // Your previous comparison query used a left outer join, which is appropriate for retaining unmatched evidence. However, its result must be interpreted carefully.
 // NO MATCH IN VULNERABILITY TABLE does not mean that the software is secure, patched or unaffected. It means only that the evidence record did not match a vulnerability record using the specified device ID, vendor, software name and version.
 // Differences in product identification or version normalization can also prevent a match. Microsoft's documentation defines these columns but does not guarantee that every evidence record will have a corresponding vulnerability record.
